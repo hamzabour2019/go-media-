@@ -1,0 +1,304 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========== GO Brand Theme – Bright Blue Identity ========== */
+:root {
+  /* Fonts */
+  --font-rubik: "Rubik", system-ui, sans-serif;
+  --font-cairo: "Cairo", system-ui, sans-serif;
+
+  /* Bright Blue – primary brand */
+  --accent: #0096FF;
+  --accent-2: #40A9FF;
+  --accent-soft: rgba(0, 150, 255, 0.14);
+  --accent-soft-hover: rgba(0, 150, 255, 0.24);
+  --ring: #0096FF;
+
+  /* Background & surfaces – أفتح */
+  --bg: #131b2e;
+  --bg-gradient: linear-gradient(145deg, #151d32 0%, #1a2540 30%, #1e3a5c 60%, #162a45 100%);
+  --bg-gradient-accent-glow: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(0, 150, 255, 0.18), transparent 55%);
+  --surface: rgba(255, 255, 255, 0.07);
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(0, 150, 255, 0.4);
+
+  /* Typography */
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --muted-2: #64748b;
+
+  /* Semantic */
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
+
+  /* Legacy aliases (map to theme) */
+  --go-bg: var(--bg-gradient);
+  --go-glass: var(--surface);
+  --go-glass-border: var(--border);
+
+  /* Animated background – brand colors for gradient shift */
+  --go-bg-navy: #0f172a;
+  --go-bg-navy-2: #1e293b;
+  --go-bg-purple: #3730a3;
+  --go-bg-purple-2: #4c1d95;
+  --go-bg-blue: #0096FF;
+  --go-bg-blue-2: #0e7490;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ========== Animated background gradient (pure CSS) ========== */
+.go-animated-bg {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-rubik);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image: linear-gradient(
+    135deg,
+    var(--go-bg-navy) 0%,
+    var(--go-bg-purple) 25%,
+    var(--go-bg-blue) 50%,
+    var(--go-bg-purple-2) 75%,
+    var(--go-bg-navy-2) 100%
+  );
+  background-size: 300% 300%;
+  background-position: 0% 50%;
+  background-attachment: fixed;
+  animation: goGradientShift 22s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .go-animated-bg {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}
+
+@keyframes goGradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Dark overlay for readability (glass cards, tables, forms) */
+.go-animated-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-rubik);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+.safe-area-inset-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-cairo);
+}
+
+/* Glass card – readable over animated bg (slightly stronger surface for contrast) */
+.glass-card {
+  @apply rounded-xl border backdrop-blur-xl transition-[background-color,border-color] duration-200;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 150, 255, 0.06);
+}
+.glass-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-accent);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 150, 255, 0.08);
+}
+
+/* Status chips (status colors kept distinct; in_progress uses accent) */
+.status-todo {
+  @apply bg-slate-600/50 text-slate-200 border border-slate-500/50;
+}
+.status-in_progress {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border: 1px solid rgba(0, 150, 255, 0.5);
+}
+.status-review {
+  @apply bg-amber-600/50 text-amber-100 border border-amber-500/50;
+}
+.status-approved {
+  @apply bg-emerald-600/50 text-emerald-100 border border-emerald-500/50;
+}
+.status-changes_requested {
+  @apply bg-violet-600/50 text-violet-100 border border-violet-500/50;
+}
+.status-overdue {
+  @apply bg-rose-700/60 text-rose-100 border border-rose-600/50;
+}
+
+/* FullCalendar – Bright Blue theme */
+.fc {
+  --fc-border-color: var(--border);
+  --fc-button-bg-color: rgba(0, 150, 255, 0.5);
+  --fc-button-border-color: rgba(0, 150, 255, 0.7);
+  --fc-today-bg-color: var(--accent-soft);
+  --fc-event-bg-color: rgba(0, 150, 255, 0.45);
+  --fc-event-border-color: rgba(0, 150, 255, 0.7);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(255, 255, 255, 0.03);
+}
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: var(--fc-border-color);
+}
+.fc .fc-button {
+  color: #fff;
+}
+.fc .fc-button-primary:not(:disabled):hover {
+  background: rgba(0, 150, 255, 0.85);
+  border-color: var(--accent);
+}
+.fc .fc-daygrid-day-number {
+  color: var(--muted);
+}
+.fc .fc-col-header-cell-cushion {
+  color: var(--text);
+}
+.fc .fc-daygrid-day.fc-day-today {
+  background: var(--fc-today-bg-color);
+}
+.fc-event,
+.fc-event-title {
+  color: #fff;
+}
+
+/* Recharts – dark tooltip & cursor (no white background on hover/click) */
+.recharts-default-tooltip,
+.recharts-tooltip-wrapper {
+  background: rgba(15, 15, 35, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px;
+  color: #e2e8f0 !important;
+  padding: 8px 12px;
+}
+.recharts-tooltip-cursor {
+  fill: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Table rows – dark hover/active (no white flash) */
+.glass-card table tbody tr {
+  transition: background-color 0.15s ease;
+}
+.glass-card table tbody tr:hover {
+  background: var(--surface-hover);
+}
+.glass-card table tbody tr:active {
+  background: rgba(255, 255, 255, 0.08);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mobile: table scroll and compact cells */
+.glass-card .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+}
+.glass-card table {
+  min-width: 600px;
+}
+@media (max-width: 640px) {
+  .glass-card table th,
+  .glass-card table td {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8125rem;
+  }
+  .glass-card table th {
+    white-space: nowrap;
+  }
+}
+
+/* ========== Accent utilities (guaranteed to apply) ========== */
+.bg-accent { background-color: var(--accent) !important; }
+.bg-accent:hover { background-color: var(--accent-2) !important; }
+.hover\:bg-accent-second:hover { background-color: var(--accent-2) !important; }
+.bg-accent-soft { background-color: var(--accent-soft) !important; }
+.text-accent { color: var(--accent) !important; }
+.text-accent-second { color: var(--accent-2) !important; }
+.hover\:text-accent:hover { color: var(--accent) !important; }
+.border-accent { border-color: var(--accent) !important; }
+.focus\:border-accent:focus { border-color: var(--accent) !important; }
+.focus\:ring-accent:focus { --tw-ring-color: var(--accent) !important; }
+.ring-accent { --tw-ring-color: var(--accent); }
+.border-accent\/50 { border-color: rgba(0, 150, 255, 0.5) !important; }
+/* Make slate-muted text brighter per UI requirement */
+.text-slate-400 { color: #ffffff !important; }
+.text-slate-500 { color: #e2e8f0 !important; }
+
+/* Primary button – Bright Blue with subtle glow on hover */
+.btn-primary {
+  @apply rounded-lg px-4 py-2.5 font-medium text-white transition duration-200 disabled:opacity-50;
+  background-color: var(--accent);
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-2);
+  box-shadow: 0 0 20px rgba(0, 150, 255, 0.35);
+}
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* Logo: force white display (for dark backgrounds) */
+.logo-white {
+  filter: brightness(0) invert(1);
+}
+
+/* Micro-interactions */
+@layer utilities {
+  .transition-default {
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+[dir="rtl"] @keyframes slide-in-from-right {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-in.slide-in-from-right {
+  animation: slide-in-from-right 0.25s ease-out;
+}

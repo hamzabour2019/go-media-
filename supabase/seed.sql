@@ -1,0 +1,15 @@
+-- Seed: Run AFTER creating a user via Supabase Auth (Dashboard or signup).
+-- Then set their role to ADMIN by updating profiles:
+--
+-- UPDATE profiles SET role = 'ADMIN' WHERE id = 'YOUR_USER_UUID';
+-- (Get YOUR_USER_UUID from Authentication -> Users in Supabase Dashboard)
+--
+-- Or run this after replacing the UUID:
+-- UPDATE profiles SET role = 'ADMIN' WHERE id = '00000000-0000-0000-0000-000000000000';
+
+-- Optional: seed a sample client and task template for demo
+-- INSERT INTO clients (id, name, notes, created_by) VALUES
+--   (gen_random_uuid(), 'Demo Client', 'Sample', (SELECT id FROM auth.users LIMIT 1));
+--
+-- INSERT INTO task_templates (post_type, rules_json) VALUES
+--   ('instagram_post', '{"tasks": [{"type": "design", "role": "DESIGNER", "buffer_days_before": 2}, {"type": "edit", "role": "EDITOR", "buffer_days_before": 1}]}');
