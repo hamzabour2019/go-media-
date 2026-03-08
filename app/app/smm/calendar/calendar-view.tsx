@@ -6,7 +6,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import type { DateClickArg, EventContentArg, EventDropArg } from "@fullcalendar/core";
+import type { EventContentArg, EventDropArg } from "@fullcalendar/core";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { CheckCircle2, Clock3, Facebook, FileText, Globe2, Instagram, Linkedin, Twitter } from "lucide-react";
@@ -134,7 +134,7 @@ export function CalendarView({
     }
   }
 
-  function handleDateClick(arg: DateClickArg) {
+  function handleDateClick(arg: { date: Date }) {
     const now = Date.now();
     const key = arg.date.toISOString();
     const last = lastDateClickRef.current;
