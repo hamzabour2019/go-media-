@@ -41,6 +41,7 @@ export function AppLayoutClient({
           user={user}
           onMenuClick={() => setMobileMenuOpen((v) => !v)}
         />
+        <div id="app-page-sticky-slot" className="px-3 pt-3 md:px-6 md:pt-4" />
         <main className="flex-1 p-3 md:p-6 overflow-auto min-h-0">{children}</main>
       </div>
     </div>

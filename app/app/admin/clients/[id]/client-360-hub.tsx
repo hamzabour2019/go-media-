@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Building2, Calendar, Download, FileText, Filter, Plus, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -142,11 +143,20 @@ export function Client360Hub({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteBody, setEditingNoteBody] = useState("");
   const [noteBusyId, setNoteBusyId] = useState<string | null>(null);
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
 
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.id, p.name])),
     [profiles]
   );
+
+  useEffect(() => {
+    setHeaderSlot(document.getElementById("app-page-sticky-slot"));
+    return () => {
+      const slot = document.getElementById("app-page-sticky-slot");
+      if (slot) slot.innerHTML = "";
+    };
+  }, []);
 
   const now = new Date();
   const weekStart = new Date(now);
@@ -452,9 +462,8 @@ export function Client360Hub({
     URL.revokeObjectURL(url);
   }
 
-  return (
-    <div className="space-y-6">
-      <header className="sticky top-16 z-10 glass-card p-4 md:p-5">
+  const hubHeader = (
+    <header className="sticky top-16 z-10 glass-card p-4 md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="h-14 w-14 rounded-xl bg-white/10 overflow-hidden flex items-center justify-center">
@@ -499,6 +508,11 @@ export function Client360Hub({
           </div>
         </div>
       </header>
+  );
+
+  return (
+    <div className="space-y-6">
+      {headerSlot ? createPortal(hubHeader, headerSlot) : hubHeader}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard title="Posts (7d)" value={postsThisWeek} icon={<Calendar className="h-5 w-5" />} />
