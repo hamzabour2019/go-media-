@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { Building2, Calendar, Download, FileText, Filter, Plus, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -103,6 +104,7 @@ export function Client360Hub({
   canManageNotes,
 }: Client360HubProps) {
   const supabase = createClient();
+  const router = useRouter();
   const [tab, setTab] = useState<TabKey>("overview");
   const [globalSearch, setGlobalSearch] = useState("");
   const [tasks, setTasks] = useState(initialTasks);
@@ -128,7 +130,7 @@ export function Client360Hub({
   const [newTaskType, setNewTaskType] = useState("");
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState("");
   const [newTaskDueAt, setNewTaskDueAt] = useState("");
-  const [newTaskPriority, setNewTaskPriority] = useState(0);
+  const [newTaskPriority, setNewTaskPriority] = useState(1);
 
   const [newPostPlatform, setNewPostPlatform] = useState("instagram");
   const [newPostType, setNewPostType] = useState("post");
@@ -137,6 +139,9 @@ export function Client360Hub({
   const [newPostStatus, setNewPostStatus] = useState("scheduled");
 
   const [newNoteBody, setNewNoteBody] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteBody, setEditingNoteBody] = useState("");
+  const [noteBusyId, setNoteBusyId] = useState<string | null>(null);
 
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.id, p.name])),
@@ -260,7 +265,8 @@ export function Client360Hub({
   const selectedTask = taskDrawerId ? tasks.find((t) => t.id === taskDrawerId) ?? null : null;
   const selectedPost = postDrawerId ? posts.find((p) => p.id === postDrawerId) ?? null : null;
 
-  function humanRemaining(value: string | null) {
+  function humanRemaining(value: string | null, status?: string) {
+    if (status && ["approved", "done", "completed"].includes(status)) return "Completed";
     if (!value) return "No deadline";
     const due = new Date(value);
     if (due <= new Date()) return `Overdue ${formatDistanceToNow(due, { addSuffix: true })}`;
@@ -287,6 +293,7 @@ export function Client360Hub({
       setShowCreatePost(false);
       setNewPostCaption("");
       setNewPostPublishAt("");
+      router.refresh();
     }
   }
 
@@ -313,7 +320,8 @@ export function Client360Hub({
       setNewTaskType("");
       setNewTaskDueAt("");
       setNewTaskAssigneeId("");
-      setNewTaskPriority(0);
+      setNewTaskPriority(1);
+      router.refresh();
     }
   }
 
@@ -328,13 +336,54 @@ export function Client360Hub({
     if (!error && data) {
       setNotes((prev) => [data as NoteRow, ...prev]);
       setNewNoteBody("");
+      router.refresh();
     }
+  }
+
+  function startEditNote(note: NoteRow) {
+    setEditingNoteId(note.id);
+    setEditingNoteBody(note.body);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingNoteBody("");
+  }
+
+  async function saveNote(noteId: string) {
+    if (!editingNoteBody.trim()) return;
+    setNoteBusyId(noteId);
+    const { error } = await supabase.from("client_notes").update({ body: editingNoteBody.trim() }).eq("id", noteId);
+    setNoteBusyId(null);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, body: editingNoteBody.trim() } : n)));
+    cancelEditNote();
+    router.refresh();
+  }
+
+  async function deleteNote(noteId: string) {
+    const confirmed = window.confirm("Delete this note?");
+    if (!confirmed) return;
+    setNoteBusyId(noteId);
+    const { error } = await supabase.from("client_notes").delete().eq("id", noteId);
+    setNoteBusyId(null);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    if (editingNoteId === noteId) cancelEditNote();
+    router.refresh();
   }
 
   async function updateTaskStatus(taskId: string, status: string) {
     const { error } = await supabase.from("tasks").update({ status }).eq("id", taskId);
     if (!error) {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
+      router.refresh();
     }
   }
 
@@ -345,6 +394,7 @@ export function Client360Hub({
       .eq("id", taskId);
     if (!error) {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, assignee_id: assigneeId || null } : t)));
+      router.refresh();
     }
   }
 
@@ -361,7 +411,10 @@ export function Client360Hub({
       })
       .select("id, platform, type, publish_at, status, caption, hashtags, media_url, created_at")
       .single();
-    if (!error && data) setPosts((prev) => [data as PostRow, ...prev]);
+    if (!error && data) {
+      setPosts((prev) => [data as PostRow, ...prev]);
+      router.refresh();
+    }
   }
 
   function exportCsv(kind: "tasks" | "posts") {
@@ -515,7 +568,7 @@ export function Client360Hub({
                 <p className="text-sm text-accent-second font-medium mb-1">Tasks</p>
                 {nextDeadlinesTasks.map((t) => (
                   <button key={t.id} type="button" onClick={() => setTaskDrawerId(t.id)} className="block w-full text-left text-sm py-1 text-white hover:text-accent-second">
-                    {t.title || t.type} · {new Date(t.due_at!).toLocaleString()} · {humanRemaining(t.due_at)}
+                    {t.title || t.type} · {new Date(t.due_at!).toLocaleString()} · {humanRemaining(t.due_at, t.status)}
                   </button>
                 ))}
                 {nextDeadlinesTasks.length === 0 && <p className="text-sm text-slate-500">No upcoming task deadlines</p>}
@@ -602,7 +655,7 @@ export function Client360Hub({
             </select>
             <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white">
               <option value="">Any priority</option>
-              {[0, 1, 2, 3].map((p) => <option key={p} value={String(p)}>{p}</option>)}
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((p) => <option key={p} value={String(p)}>{p}</option>)}
             </select>
             <label className="inline-flex items-center gap-2 text-sm text-white">
               <input type="checkbox" checked={onlyOverdue} onChange={(e) => setOnlyOverdue(e.target.checked)} />
@@ -632,7 +685,7 @@ export function Client360Hub({
                         {["todo", "in_progress", "review", "approved", "changes_requested"].map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
-                    <td className="px-3 py-2 text-slate-500 text-sm">{t.due_at ? `${new Date(t.due_at).toLocaleString()} · ${humanRemaining(t.due_at)}` : "—"}</td>
+                    <td className="px-3 py-2 text-slate-500 text-sm">{t.due_at ? `${new Date(t.due_at).toLocaleString()} · ${humanRemaining(t.due_at, t.status)}` : "—"}</td>
                     <td className="px-3 py-2 text-slate-500 text-sm">{t.priority}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
@@ -686,8 +739,37 @@ export function Client360Hub({
           <ul className="space-y-2">
             {filteredNotes.map((n) => (
               <li key={n.id} className="rounded-lg bg-white/5 p-3">
-                <p className="text-white text-sm">{n.body}</p>
+                {editingNoteId === n.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editingNoteBody}
+                      onChange={(e) => setEditingNoteBody(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-white text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => saveNote(n.id)} disabled={noteBusyId === n.id} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-50">
+                        Save
+                      </button>
+                      <button type="button" onClick={cancelEditNote} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-slate-300">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-white text-sm">{n.body}</p>
+                )}
                 <p className="text-xs text-slate-500 mt-1">{profileMap[n.author_id] ?? n.author_id} · {new Date(n.created_at).toLocaleString()}</p>
+                {canManageNotes && editingNoteId !== n.id && (
+                  <div className="mt-2 flex gap-3 text-xs">
+                    <button type="button" onClick={() => startEditNote(n)} className="text-accent-second hover:text-accent transition duration-200">
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => deleteNote(n.id)} disabled={noteBusyId === n.id} className="text-rose-400 hover:text-rose-300 disabled:opacity-50 transition duration-200">
+                      Delete
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
             {filteredNotes.length === 0 && <li className="text-slate-500 text-sm">No notes yet.</li>}
@@ -718,7 +800,13 @@ export function Client360Hub({
             {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <input type="datetime-local" value={newTaskDueAt} onChange={(e) => setNewTaskDueAt(e.target.value)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
-          <input type="number" value={newTaskPriority} onChange={(e) => setNewTaskPriority(Number(e.target.value))} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
+          <select value={newTaskPriority} onChange={(e) => setNewTaskPriority(Number(e.target.value))} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white">
+            {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
           <button type="button" onClick={createTask} className="btn-primary w-full">Create Task</button>
         </div>
       </Drawer>
@@ -745,7 +833,7 @@ export function Client360Hub({
             <p className="text-slate-500">Status: {selectedTask.status}</p>
             <p className="text-slate-500">Created: {new Date(selectedTask.created_at).toLocaleString()}</p>
             <p className="text-slate-500">Deadline: {selectedTask.due_at ? new Date(selectedTask.due_at).toLocaleString() : "—"}</p>
-            <p className="text-slate-500">Remaining: {humanRemaining(selectedTask.due_at)}</p>
+            <p className="text-slate-500">Remaining: {humanRemaining(selectedTask.due_at, selectedTask.status)}</p>
             {selectedTask.description && <p className="text-white/90">{selectedTask.description}</p>}
             <Link href={`/app/task/${selectedTask.id}`} className="text-accent-second hover:text-accent">Open full task page</Link>
           </div>

@@ -8,6 +8,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
+const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
+
 const schema = z.object({
   name: z.string().min(1, "الاسم مطلوب"),
   address: z.string().optional(),
@@ -53,11 +55,16 @@ export function ProfileForm({ profile }: { profile: ProfileForForm }) {
 
   async function onAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
+    const byMime = file?.type?.startsWith("image/");
+    const byExtension = /\.(png|jpe?g|gif|webp|bmp|dib|tiff?|heic|heif|avif|ico|jfif|pjpeg|pjp)$/i.test(file?.name ?? "");
+    if (!file || (!byMime && !byExtension)) return;
     setUploading(true);
     const ext = file.name.split(".").pop() || "jpg";
     const path = `${profile.id}/avatar.${ext}`;
-    const { data, error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    const { data, error } = await supabase.storage.from("avatars").upload(path, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+    });
     setUploading(false);
     if (error) {
       toast.error("فشل رفع الصورة");
@@ -104,7 +111,7 @@ export function ProfileForm({ profile }: { profile: ProfileForForm }) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT_ALL}
               onChange={onAvatarChange}
               disabled={uploading}
               className="hidden"

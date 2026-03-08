@@ -42,21 +42,21 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] max-h-[70vh] overflow-auto glass-card border border-go-glass-border rounded-xl shadow-xl z-50"
+      className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] max-h-[70vh] overflow-auto rounded-xl shadow-xl z-50 border border-white/10 bg-[#0f1320] backdrop-blur-xl"
       role="dialog"
       aria-label="Notifications"
     >
-      <div className="p-3 border-b border-go-glass-border flex items-center justify-between">
-        <h3 className="font-medium text-sm">Notifications</h3>
+      <div className="p-3 border-b border-white/10 flex items-center justify-between">
+        <h3 className="font-medium text-sm text-white">Notifications</h3>
         <button
           type="button"
           onClick={onClose}
-          className="text-slate-500 hover:text-slate-300 text-sm"
+          className="text-slate-400 hover:text-white text-sm"
         >
           Close
         </button>
       </div>
-      <div className="divide-y divide-white/5">
+      <div className="divide-y divide-white/10">
         {loading ? (
           <div className="p-4 text-center text-slate-500 text-sm">Loading…</div>
         ) : items.length === 0 ? (

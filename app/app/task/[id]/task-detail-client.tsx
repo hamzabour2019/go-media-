@@ -3,7 +3,10 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
+
+const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
 
 interface TaskDetailClientProps {
   task: {
@@ -44,11 +47,15 @@ export function TaskDetailClient({
   const [task, setTask] = useState(initialTask);
   const [comments, setComments] = useState(initialComments);
   const [newComment, setNewComment] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editedCommentBody, setEditedCommentBody] = useState("");
+  const [commentBusyId, setCommentBusyId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [approvalNote, setApprovalNote] = useState("");
   const [outputUrl, setOutputUrl] = useState((initialTask.output_json as { url?: string })?.url ?? "");
   const [outputSaving, setOutputSaving] = useState(false);
   const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     const channel = supabase
@@ -68,46 +75,98 @@ export function TaskDetailClient({
   async function submitComment() {
     if (!newComment.trim()) return;
     setSubmitting(true);
-    await supabase.from("comments").insert({ task_id: task.id, author_id: currentUserId, body: newComment.trim() });
+    const { error } = await supabase.from("comments").insert({ task_id: task.id, author_id: currentUserId, body: newComment.trim() });
     setNewComment("");
     setSubmitting(false);
+    if (!error) router.refresh();
+  }
+
+  function startEditComment(commentId: string, body: string) {
+    setEditingCommentId(commentId);
+    setEditedCommentBody(body);
+  }
+
+  function cancelEditComment() {
+    setEditingCommentId(null);
+    setEditedCommentBody("");
+  }
+
+  async function saveComment(commentId: string) {
+    if (!editedCommentBody.trim()) return;
+    setCommentBusyId(commentId);
+    const { error } = await supabase
+      .from("comments")
+      .update({ body: editedCommentBody.trim() })
+      .eq("id", commentId)
+      .eq("author_id", currentUserId);
+    setCommentBusyId(null);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, body: editedCommentBody.trim() } : c)));
+    cancelEditComment();
+    router.refresh();
+  }
+
+  async function deleteComment(commentId: string) {
+    const confirmed = window.confirm("Delete this comment?");
+    if (!confirmed) return;
+    setCommentBusyId(commentId);
+    const { error } = await supabase.from("comments").delete().eq("id", commentId).eq("author_id", currentUserId);
+    setCommentBusyId(null);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    if (editingCommentId === commentId) cancelEditComment();
+    router.refresh();
   }
 
   async function submitForReview() {
-    await supabase.from("tasks").update({ status: "review" }).eq("id", task.id);
+    const { error } = await supabase.from("tasks").update({ status: "review" }).eq("id", task.id);
     setTask((prev) => ({ ...prev, status: "review" }));
+    if (!error) router.refresh();
   }
 
   async function saveOutput() {
     setOutputSaving(true);
-    await supabase.from("tasks").update({ output_json: { url: outputUrl || undefined } }).eq("id", task.id);
+    const { error } = await supabase.from("tasks").update({ output_json: { url: outputUrl || undefined } }).eq("id", task.id);
     setTask((prev) => ({ ...prev, output_json: { url: outputUrl || undefined } }));
     setOutputSaving(false);
+    if (!error) router.refresh();
   }
 
   async function onOutputFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const path = `tasks/${task.id}/${Date.now()}_${file.name}`;
-    const { data: upload, error: upErr } = await supabase.storage.from("brand-assets").upload(path, file, { upsert: true });
+    const { data: upload, error: upErr } = await supabase.storage.from("brand-assets").upload(path, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+    });
     if (upErr) { console.error(upErr); return; }
     const { data: urlData } = supabase.storage.from("brand-assets").getPublicUrl(upload.path);
     const newOutput = { ...(task.output_json as object || {}), file_url: urlData.publicUrl };
-    await supabase.from("tasks").update({ output_json: newOutput }).eq("id", task.id);
+    const { error: saveError } = await supabase.from("tasks").update({ output_json: newOutput }).eq("id", task.id);
     setTask((prev) => ({ ...prev, output_json: newOutput }));
     setOutputUrl(urlData.publicUrl);
+    if (!saveError) router.refresh();
   }
 
   async function approve(status: "approved" | "changes_requested") {
-    await supabase.from("approvals").insert({
+    const { error: approvalError } = await supabase.from("approvals").insert({
       task_id: task.id,
       status,
       approver_id: currentUserId,
       note: approvalNote || null,
     });
-    await supabase.from("tasks").update({ status: status === "approved" ? "approved" : "changes_requested" }).eq("id", task.id);
+    if (approvalError) return;
+    const { error: taskError } = await supabase.from("tasks").update({ status: status === "approved" ? "approved" : "changes_requested" }).eq("id", task.id);
     setTask((prev) => ({ ...prev, status: status === "approved" ? "approved" : "changes_requested" }));
     setApprovalNote("");
+    if (!taskError) router.refresh();
   }
 
   const fields = (dynamicFieldSchema as { fields?: { key: string; label: string; type: string }[] })?.fields ?? [];
@@ -120,7 +179,8 @@ export function TaskDetailClient({
     return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   }
 
-  function getDeadlineRemaining(value: string | null) {
+  function getDeadlineRemaining(value: string | null, status: string) {
+    if (["approved", "done", "completed"].includes(status)) return "Completed";
     if (!value) return "No deadline";
     const due = new Date(value);
     const now = new Date();
@@ -154,7 +214,7 @@ export function TaskDetailClient({
           <dt className="text-slate-500">Deadline</dt>
           <dd className="text-white">{formatDateTime(task.due_at)}</dd>
           <dt className="text-slate-500">Time left</dt>
-          <dd className="text-white">{getDeadlineRemaining(task.due_at)}</dd>
+          <dd className="text-white">{getDeadlineRemaining(task.due_at, task.status)}</dd>
           {fields.map((f) => (
             <span key={f.key}>
               <dt className="text-slate-500">{f.label}</dt>
@@ -174,7 +234,7 @@ export function TaskDetailClient({
             placeholder="Output URL (e.g. Figma, drive link)"
             className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white mb-2"
           />
-          <input type="file" onChange={onOutputFileChange} className="text-slate-400 text-sm mb-2" />
+          <input type="file" accept={`${IMAGE_ACCEPT_ALL},video/*`} onChange={onOutputFileChange} className="text-slate-400 text-sm mb-2" />
           <button type="button" onClick={saveOutput} disabled={outputSaving} className="rounded-lg bg-accent px-4 py-2 text-sm text-white hover:bg-accent-second disabled:opacity-50 transition duration-200">Save output</button>
           {(task.output_json as { url?: string; file_url?: string } | null)?.file_url && (
             <p className="mt-2 text-slate-400 text-sm"><a href={(task.output_json as { file_url: string }).file_url} target="_blank" rel="noopener noreferrer" className="text-accent-second hover:text-accent transition duration-200">View uploaded file</a></p>
@@ -216,8 +276,37 @@ export function TaskDetailClient({
         <div className="space-y-3 mb-4">
           {comments.map((c) => (
             <div key={c.id} className="rounded-lg bg-white/5 p-3">
-              <p className="text-slate-300 text-sm">{c.body}</p>
+              {editingCommentId === c.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editedCommentBody}
+                    onChange={(e) => setEditedCommentBody(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-white text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => saveComment(c.id)} disabled={commentBusyId === c.id} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-50">
+                      Save
+                    </button>
+                    <button type="button" onClick={cancelEditComment} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-slate-300">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-slate-300 text-sm">{c.body}</p>
+              )}
               <p className="text-slate-500 text-xs mt-1">{profileMap[c.author_id] ?? c.author_id} · {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</p>
+              {c.author_id === currentUserId && editingCommentId !== c.id && (
+                <div className="mt-2 flex gap-3 text-xs">
+                  <button type="button" onClick={() => startEditComment(c.id, c.body)} className="text-accent-second hover:text-accent transition duration-200">
+                    Edit
+                  </button>
+                  <button type="button" onClick={() => deleteComment(c.id)} disabled={commentBusyId === c.id} className="text-rose-400 hover:text-rose-300 disabled:opacity-50 transition duration-200">
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

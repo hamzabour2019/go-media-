@@ -19,7 +19,6 @@ export default async function LoginPage() {
               <Image src="/images/logo.png?v=2" alt="GO Media" width={120} height={48} className="object-contain logo-white" unoptimized />
             </div>
             <h1 className="text-xl font-bold text-white">GO Media Agency</h1>
-            <p className="text-slate-400 mt-1 text-sm">Task Manager (M-TM)</p>
           </div>
           <LoginForm />
         </div>

@@ -51,7 +51,8 @@ export function TasksList({
 
   const statuses = ["todo", "in_progress", "review", "approved", "changes_requested"];
   const clients = Array.from(new Set(tasks.map((t) => t.client_id).filter(Boolean)));
-  const dueRemaining = (value: string | null) => {
+  const dueRemaining = (value: string | null, status: string) => {
+    if (["approved", "done", "completed"].includes(status)) return "Completed";
     if (!value) return "No deadline";
     const due = new Date(value);
     const now = new Date();
@@ -95,7 +96,7 @@ export function TasksList({
                 {isAdminOrSupervisor && <td className="px-4 py-3 text-slate-400">{t.assignee_id ? profileMap[t.assignee_id] ?? "—" : "Unassigned"}</td>}
                 <td className="px-4 py-3"><span className={`status-${t.status} rounded-full px-2 py-0.5 text-xs`}>{t.status}</span></td>
                 <td className="px-4 py-3 text-slate-500 text-sm">{t.due_at ? new Date(t.due_at).toLocaleDateString() : "—"}</td>
-                <td className="px-4 py-3 text-slate-500 text-sm">{dueRemaining(t.due_at)}</td>
+                <td className="px-4 py-3 text-slate-500 text-sm">{dueRemaining(t.due_at, t.status)}</td>
               </tr>
             ))}
           </tbody>

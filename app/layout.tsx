@@ -16,11 +16,12 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "GO Media Agency Task Manager (M-TM)",
+  title: "GO Media Agency",
   description: "Agency task manager with role-based dashboards",
   icons: {
-    icon: "/images/logo.png?v=2",
-    apple: "/images/logo.png?v=2",
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
   },
 };
 

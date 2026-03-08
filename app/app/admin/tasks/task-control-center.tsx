@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Client { id: string; name: string }
 interface Profile { id: string; name: string; role: string }
@@ -18,10 +19,11 @@ export function TaskControlCenter({
   const [type, setType] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueAt, setDueAt] = useState("");
-  const [priority, setPriority] = useState(0);
+  const [priority, setPriority] = useState(1);
   const [created, setCreated] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
+  const router = useRouter();
 
   async function handleCreate() {
     if (!clientId || !type || !dueAt) return;
@@ -57,6 +59,7 @@ export function TaskControlCenter({
         meta_json: { type, client_id: clientId },
       });
       setCreated(task.id);
+      router.refresh();
     }
   }
 
@@ -90,7 +93,13 @@ export function TaskControlCenter({
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Priority</label>
-              <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white text-sm" />
+              <select value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white text-sm">
+                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <button type="button" onClick={handleCreate} disabled={loading} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-second disabled:opacity-50 transition duration-200">

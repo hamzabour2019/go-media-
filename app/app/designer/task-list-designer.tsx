@@ -34,7 +34,8 @@ export function TaskListDesigner({ initialTasks, userId }: { initialTasks: TaskR
   }, [userId]);
 
   const filtered = filter ? tasks.filter((t) => t.status === filter) : tasks;
-  const dueRemaining = (value: string | null) => {
+  const dueRemaining = (value: string | null, status: string) => {
+    if (["approved", "done", "completed"].includes(status)) return "Completed";
     if (!value) return "No deadline";
     const due = new Date(value);
     const now = new Date();
@@ -69,13 +70,13 @@ export function TaskListDesigner({ initialTasks, userId }: { initialTasks: TaskR
             <Link
               key={t.id}
               href={`/app/task/${t.id}`}
-              className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3 px-4 py-3 hover:bg-white/5 transition"
+              className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3 items-center px-4 py-3 hover:bg-white/5 transition"
             >
               <span className="text-white">{t.type}</span>
-              <span className={`text-sm status-${t.status}`}>{t.status}</span>
+              <span className={`inline-flex min-h-[26px] items-center justify-center rounded-full px-3 py-1 text-sm status-${t.status}`}>{t.status}</span>
               <div className="text-sm text-slate-500">
                 <p>{t.due_at ? new Date(t.due_at).toLocaleString() : "—"}</p>
-                <p className="text-xs">{dueRemaining(t.due_at)}</p>
+                <p className="text-xs">{dueRemaining(t.due_at, t.status)}</p>
               </div>
             </Link>
           ))}

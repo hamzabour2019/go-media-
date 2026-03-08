@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 
+const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
+
 const schema = z.object({
   logo_url: z.string().url().optional().or(z.literal("")),
   guidelines_url: z.string().url().optional().or(z.literal("")),
@@ -39,7 +41,10 @@ export function BrandKitForm({
     if (!file) return;
     setUploading(true);
     const name = `${clientId}/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from("brand-assets").upload(name, file, { upsert: true });
+    const { data, error } = await supabase.storage.from("brand-assets").upload(name, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+    });
     setUploading(false);
     if (error) {
       console.error(error);
@@ -67,7 +72,7 @@ export function BrandKitForm({
     <form onSubmit={handleSubmit(onSubmit)} className="glass-card p-6 max-w-lg space-y-4">
       <div>
         <label className="block text-sm font-medium text-slate-300 mb-1">Logo</label>
-        <input type="file" accept="image/*" onChange={onFileChange} disabled={uploading} className="text-sm text-slate-400" />
+        <input type="file" accept={IMAGE_ACCEPT_ALL} onChange={onFileChange} disabled={uploading} className="text-sm text-slate-400" />
         {initialData?.logo_url && (
           <img src={initialData.logo_url} alt="Logo" className="mt-2 h-20 object-contain" />
         )}

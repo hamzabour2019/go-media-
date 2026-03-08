@@ -97,6 +97,29 @@ html {
   z-index: 0;
 }
 
+/* Loader: same animated background as body */
+.page-loader-bg {
+  background-image: linear-gradient(
+    135deg,
+    var(--go-bg-navy) 0%,
+    var(--go-bg-purple) 25%,
+    var(--go-bg-blue) 50%,
+    var(--go-bg-purple-2) 75%,
+    var(--go-bg-navy-2) 100%
+  );
+  background-size: 300% 300%;
+  background-position: 0% 50%;
+  background-attachment: fixed;
+  animation: goGradientShift 22s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-loader-bg {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -188,6 +211,98 @@ body {
 }
 .fc-event,
 .fc-event-title {
+  color: #fff;
+}
+/* FullCalendar – selected/highlight (no white background) */
+.fc .fc-highlight {
+  background: rgba(0, 150, 255, 0.25) !important;
+  color: #f1f5f9 !important;
+}
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  color: var(--text);
+}
+.fc .fc-scrollgrid,
+.fc .fc-scrollgrid-section,
+.fc .fc-daygrid-body,
+.fc .fc-timegrid-cols,
+.fc .fc-timegrid-slot,
+.fc .fc-timegrid-axis,
+.fc .fc-daygrid-day-frame {
+  background: transparent !important;
+}
+.fc .fc-daygrid-day:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.calendar-post-card {
+  display: flex;
+  min-height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.calendar-post-strip {
+  width: 4px;
+  flex-shrink: 0;
+  background: #60a5fa;
+}
+.calendar-post-body {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+.calendar-post-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.calendar-post-platform-icon {
+  color: #cbd5e1;
+  display: inline-flex;
+}
+.calendar-post-title {
+  color: #f8fafc;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendar-post-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #94a3b8;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.calendar-post-status-draft .calendar-post-strip {
+  background: #60a5fa;
+}
+.calendar-post-status-review .calendar-post-strip {
+  background: #facc15;
+}
+.calendar-post-status-scheduled .calendar-post-strip {
+  background: #22c55e;
+}
+.calendar-post-status-published .calendar-post-strip {
+  background: #94a3b8;
+}
+
+/* Select / Option – dropdown list dark (no white background, text visible) */
+select {
+  color: #f1f5f9;
+}
+select option {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+select option:checked,
+select option:hover {
+  background: rgba(0, 150, 255, 0.3);
   color: #fff;
 }
 

@@ -50,11 +50,9 @@ const navByRole: Record<
   ],
   DESIGNER: [
     { href: "/app/designer", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/app/designer/tasks", label: "My Tasks", icon: ListTodo },
   ],
   EDITOR: [
     { href: "/app/editor", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/app/editor/tasks", label: "My Tasks", icon: Film },
   ],
 };
 
@@ -111,6 +109,7 @@ export function AppSidebar({
       <aside
         className={`
           w-full md:w-56 shrink-0 glass-card border-b md:border-b-0 md:border-r border-go-glass-border flex flex-col
+          bg-slate-900/95 md:bg-transparent
           fixed md:relative inset-y-0 left-0 z-40 md:z-auto
           w-72 max-w-[85vw] md:max-w-none
           transform transition-transform duration-200 ease-out md:transform-none
