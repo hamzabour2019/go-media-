@@ -2,11 +2,13 @@
 
 import { useState, useRef } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { updateMyAvatar, updateMyProfile } from "@/app/actions/profile";
 
 const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
 
@@ -34,6 +36,7 @@ export type ProfileForForm = {
 
 export function ProfileForm({ profile }: { profile: ProfileForForm }) {
   const supabase = createClient();
+  const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile.avatar_url ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,26 +75,29 @@ export function ProfileForm({ profile }: { profile: ProfileForForm }) {
     }
     const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.path);
     setAvatarUrl(urlData.publicUrl);
-    await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("id", profile.id);
+    const result = await updateMyAvatar({ avatarUrl: urlData.publicUrl });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
     toast.success("تم تحديث الصورة");
+    router.refresh();
   }
 
   async function onSubmit(data: FormData) {
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        name: data.name,
-        address: data.address || null,
-        email: data.email || null,
-        phone: data.phone || null,
-        notes: data.notes || null,
-      })
-      .eq("id", profile.id);
-    if (error) {
-      toast.error("فشل الحفظ");
+    const result = await updateMyProfile({
+      name: data.name,
+      address: data.address || "",
+      email: data.email || "",
+      phone: data.phone || "",
+      notes: data.notes || "",
+    });
+    if (!result.ok) {
+      toast.error(result.error);
       return;
     }
     toast.success("تم حفظ التعديلات");
+    router.refresh();
   }
 
   return (
@@ -148,7 +154,7 @@ export function ProfileForm({ profile }: { profile: ProfileForForm }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1">البريد الإلكتروني</label>
+        <label className="block text-sm font-medium text-slate-300 mb-1">بريد التواصل</label>
         <input
           {...register("email")}
           type="email"
@@ -156,6 +162,7 @@ export function ProfileForm({ profile }: { profile: ProfileForForm }) {
           placeholder="example@email.com"
         />
         {errors.email && <p className="mt-1 text-sm text-rose-400">{errors.email.message}</p>}
+        <p className="mt-1 text-xs text-slate-500">هذا الحقل للتواصل الداخلي فقط ولا يغيّر بريد تسجيل الدخول.</p>
       </div>
 
       <div>

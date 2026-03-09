@@ -5,8 +5,16 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
+import {
+  getTaskOutputDownloadUrlAction,
+  saveTaskOutputAction,
+  transitionTaskAction,
+} from "@/app/actions/tasks";
 
 const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
+const MAX_OUTPUT_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_OUTPUT_FILE_NAME_LENGTH = 240;
 
 interface TaskDetailClientProps {
   task: {
@@ -56,6 +64,9 @@ export function TaskDetailClient({
   const [outputSaving, setOutputSaving] = useState(false);
   const supabase = createClient();
   const router = useRouter();
+  const canSubmitForReview =
+    task.assignee_id === currentUserId &&
+    (task.status === "in_progress" || task.status === "changes_requested");
 
   useEffect(() => {
     const channel = supabase
@@ -125,48 +136,108 @@ export function TaskDetailClient({
   }
 
   async function submitForReview() {
-    const { error } = await supabase.from("tasks").update({ status: "review" }).eq("id", task.id);
-    setTask((prev) => ({ ...prev, status: "review" }));
-    if (!error) router.refresh();
+    const result = await transitionTaskAction({ taskId: task.id, targetStatus: "review", note: "" });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    setTask((prev) => ({ ...prev, status: result.data.status }));
+    router.refresh();
   }
 
   async function saveOutput() {
     setOutputSaving(true);
-    const { error } = await supabase.from("tasks").update({ output_json: { url: outputUrl || undefined } }).eq("id", task.id);
-    setTask((prev) => ({ ...prev, output_json: { url: outputUrl || undefined } }));
+    const currentOutput = (task.output_json as { file_path?: string; file_name?: string } | null) ?? null;
+    const result = await saveTaskOutputAction({
+      taskId: task.id,
+      outputUrl,
+      filePath: currentOutput?.file_path ?? "",
+      fileName: currentOutput?.file_name ?? "",
+    });
     setOutputSaving(false);
-    if (!error) router.refresh();
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    setTask((prev) => ({ ...prev, output_json: result.data.output_json }));
+    router.refresh();
   }
 
   async function onOutputFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const allowedType = file.type.startsWith("image/") || file.type.startsWith("video/");
+    if (!allowedType) {
+      toast.error("Only image and video outputs are supported.");
+      return;
+    }
+    if (file.size > MAX_OUTPUT_FILE_SIZE) {
+      toast.error("The selected file is too large.");
+      return;
+    }
+    if (!file.size) {
+      toast.error("The selected file is empty.");
+      return;
+    }
+    if (file.name.length > MAX_OUTPUT_FILE_NAME_LENGTH) {
+      toast.error("The file name is too long.");
+      return;
+    }
     const path = `tasks/${task.id}/${Date.now()}_${file.name}`;
-    const { data: upload, error: upErr } = await supabase.storage.from("brand-assets").upload(path, file, {
+    const { data: upload, error: upErr } = await supabase.storage.from("task-outputs").upload(path, file, {
       upsert: true,
       contentType: file.type || undefined,
     });
-    if (upErr) { console.error(upErr); return; }
-    const { data: urlData } = supabase.storage.from("brand-assets").getPublicUrl(upload.path);
-    const newOutput = { ...(task.output_json as object || {}), file_url: urlData.publicUrl };
-    const { error: saveError } = await supabase.from("tasks").update({ output_json: newOutput }).eq("id", task.id);
-    setTask((prev) => ({ ...prev, output_json: newOutput }));
-    setOutputUrl(urlData.publicUrl);
-    if (!saveError) router.refresh();
+    if (upErr) {
+      console.error(upErr);
+      toast.error(upErr.message);
+      return;
+    }
+    const persistedUrl = ((task.output_json as { url?: string } | null)?.url ?? "").trim();
+    const result = await saveTaskOutputAction({
+      taskId: task.id,
+      outputUrl: persistedUrl,
+      filePath: upload.path,
+      fileName: file.name,
+    });
+    if (!result.ok) {
+      await supabase.storage.from("task-outputs").remove([upload.path]);
+      toast.error(result.error);
+      return;
+    }
+    setTask((prev) => ({ ...prev, output_json: result.data.output_json }));
+    toast.success("Output file uploaded.");
+    router.refresh();
   }
 
   async function approve(status: "approved" | "changes_requested") {
-    const { error: approvalError } = await supabase.from("approvals").insert({
-      task_id: task.id,
-      status,
-      approver_id: currentUserId,
-      note: approvalNote || null,
+    const result = await transitionTaskAction({
+      taskId: task.id,
+      targetStatus: status,
+      note: approvalNote,
     });
-    if (approvalError) return;
-    const { error: taskError } = await supabase.from("tasks").update({ status: status === "approved" ? "approved" : "changes_requested" }).eq("id", task.id);
-    setTask((prev) => ({ ...prev, status: status === "approved" ? "approved" : "changes_requested" }));
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    setTask((prev) => ({ ...prev, status: result.data.status }));
     setApprovalNote("");
-    if (!taskError) router.refresh();
+    router.refresh();
+  }
+
+  async function openUploadedFile() {
+    const privateFilePath = (task.output_json as { file_path?: string } | null)?.file_path;
+
+    if (privateFilePath) {
+      const result = await getTaskOutputDownloadUrlAction({ taskId: task.id });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    toast.error("This task does not have a downloadable private file.");
   }
 
   const fields = (dynamicFieldSchema as { fields?: { key: string; label: string; type: string }[] })?.fields ?? [];
@@ -188,6 +259,8 @@ export function TaskDetailClient({
     if (due <= now) return `Overdue ${formatDistanceToNow(due, { addSuffix: true })}`;
     return `Remaining ${formatDistanceToNow(due, { addSuffix: true })}`;
   }
+
+  const outputData = (task.output_json as { url?: string; file_path?: string; file_name?: string } | null) ?? null;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -236,13 +309,19 @@ export function TaskDetailClient({
           />
           <input type="file" accept={`${IMAGE_ACCEPT_ALL},video/*`} onChange={onOutputFileChange} className="text-slate-400 text-sm mb-2" />
           <button type="button" onClick={saveOutput} disabled={outputSaving} className="rounded-lg bg-accent px-4 py-2 text-sm text-white hover:bg-accent-second disabled:opacity-50 transition duration-200">Save output</button>
-          {(task.output_json as { url?: string; file_url?: string } | null)?.file_url && (
-            <p className="mt-2 text-slate-400 text-sm"><a href={(task.output_json as { file_url: string }).file_url} target="_blank" rel="noopener noreferrer" className="text-accent-second hover:text-accent transition duration-200">View uploaded file</a></p>
+          {outputData?.file_path && (
+            <button
+              type="button"
+              onClick={openUploadedFile}
+              className="mt-2 text-sm text-accent-second hover:text-accent transition duration-200"
+            >
+              {outputData?.file_name ? `Open ${outputData.file_name}` : "Open uploaded file"}
+            </button>
           )}
         </div>
       )}
 
-      {task.assignee_id === currentUserId && task.status !== "approved" && task.status !== "review" && (
+      {canSubmitForReview && (
         <div className="flex gap-2">
           <button
             type="button"

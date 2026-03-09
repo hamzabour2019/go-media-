@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/session";
 import Link from "next/link";
 import { Users, Building2, CheckSquare, ListTodo, Calendar } from "lucide-react";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -10,6 +11,7 @@ const AdminDashboardCharts = dynamic(
 );
 
 export default async function AdminDashboard() {
+  await requireRole(["ADMIN"]);
   const supabase = await createClient();
   const [
     { count: usersCount },

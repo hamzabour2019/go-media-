@@ -60,7 +60,13 @@ export function ApprovalList({
                 {showPreview && (
                   <td className="px-4 py-3 text-slate-500 text-xs max-w-[200px] truncate">
                     {t.output_json && typeof t.output_json === "object"
-                      ? (t.output_json.url ? String(t.output_json.url) : t.output_json.file_url ? String(t.output_json.file_url) : JSON.stringify(t.output_json).slice(0, 80) + "...")
+                      ? (t.output_json.url
+                          ? String(t.output_json.url)
+                          : t.output_json.file_name
+                            ? `Uploaded file: ${String(t.output_json.file_name)}`
+                            : t.output_json.file_path
+                              ? "Uploaded private file"
+                                : JSON.stringify(t.output_json).slice(0, 80) + "...")
                       : "—"}
                   </td>
                 )}

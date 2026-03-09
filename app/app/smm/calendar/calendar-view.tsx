@@ -10,8 +10,13 @@ import type { EventContentArg, EventDropArg } from "@fullcalendar/core";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { CheckCircle2, Clock3, Facebook, FileText, Globe2, Instagram, Linkedin, Twitter } from "lucide-react";
+import { toast } from "sonner";
+import { createPostAction, reschedulePostAction } from "@/app/actions/posts";
+import { POST_STATUSES, type PostStatus } from "@/lib/workflows";
 
 const IMAGE_ACCEPT_ALL = "image/*,.heic,.heif,.avif,.webp,.bmp,.dib,.tif,.tiff,.ico,.jfif,.pjpeg,.pjp";
+const MAX_POST_MEDIA_SIZE = 25 * 1024 * 1024;
+const MAX_POST_MEDIA_NAME_LENGTH = 240;
 
 interface ClientRow {
   id: string;
@@ -38,10 +43,12 @@ export function CalendarView({
   initialClients,
   initialPosts,
   initialAssignees,
+  initialPostAssignees,
 }: {
   initialClients: ClientRow[];
   initialPosts: PostRow[];
   initialAssignees: AssigneeRow[];
+  initialPostAssignees: Record<string, string[]>;
 }) {
   const [posts, setPosts] = useState(initialPosts);
   const [clientFilter, setClientFilter] = useState<string>("");
@@ -50,28 +57,9 @@ export function CalendarView({
   const [assigneeFilter, setAssigneeFilter] = useState<string>("");
   const [selectedPost, setSelectedPost] = useState<PostRow | null>(null);
   const [requestedOpenAt, setRequestedOpenAt] = useState<string>("");
-  const [postAssignees, setPostAssignees] = useState<Record<string, string[]>>({});
+  const [postAssignees, setPostAssignees] = useState<Record<string, string[]>>(initialPostAssignees);
   const lastDateClickRef = useRef<{ key: string; at: number } | null>(null);
   const supabase = createClient();
-
-  useEffect(() => {
-    supabase
-      .from("tasks")
-      .select("post_id, assignee_id")
-      .not("post_id", "is", null)
-      .not("assignee_id", "is", null)
-      .then(({ data }) => {
-        const next: Record<string, string[]> = {};
-        for (const row of data ?? []) {
-          const postId = (row.post_id as string | null) ?? "";
-          const assigneeId = (row.assignee_id as string | null) ?? "";
-          if (!postId || !assigneeId) continue;
-          if (!next[postId]) next[postId] = [];
-          if (!next[postId].includes(assigneeId)) next[postId].push(assigneeId);
-        }
-        setPostAssignees(next);
-      });
-  }, []);
 
   const assigneeNameMap = useMemo(
     () => Object.fromEntries(initialAssignees.map((a) => [a.id, a.name])),
@@ -118,20 +106,13 @@ export function CalendarView({
       return;
     }
     const dateStr = start.toISOString();
-    await supabase.from("posts").update({ publish_at: dateStr }).eq("id", arg.event.id);
-    setPosts((prev) => prev.map((p) => (p.id === arg.event.id ? { ...p, publish_at: dateStr } : p)));
-    const { data: linkedTasks } = await supabase.from("tasks").select("id, type").eq("post_id", arg.event.id);
-    const { data: templates } = await supabase.from("task_templates").select("post_type, rules_json");
-    const publishDate = new Date(dateStr);
-    for (const task of linkedTasks ?? []) {
-      const template = (templates ?? []).find((t) => (t.rules_json as { tasks?: { type: string; buffer_days_before?: number }[] })?.tasks?.some((r: { type: string }) => r.type === task.type));
-      const tasksConfig = (template?.rules_json as { tasks?: { type: string; buffer_days_before?: number }[] })?.tasks ?? [];
-      const rule = tasksConfig.find((r: { type: string }) => r.type === task.type);
-      const bufferDays = rule?.buffer_days_before ?? 0;
-      const due = new Date(publishDate);
-      due.setDate(due.getDate() - bufferDays);
-      await supabase.from("tasks").update({ due_at: due.toISOString() }).eq("id", task.id);
+    const result = await reschedulePostAction({ postId: arg.event.id, publishAt: dateStr });
+    if (!result.ok) {
+      toast.error(result.error);
+      arg.revert();
+      return;
     }
+    setPosts((prev) => prev.map((p) => (p.id === arg.event.id ? { ...p, publish_at: result.data.publish_at } : p)));
   }
 
   function handleDateClick(arg: { date: Date }) {
@@ -286,7 +267,7 @@ export function CalendarView({
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm text-white hover:bg-accent-second transition duration-200"
             >
               <FileText className="h-4 w-4" />
-              Edit post details
+              Open posts list
             </Link>
           </div>
         )}
@@ -315,7 +296,7 @@ function CreatePostForm({
   const [type, setType] = useState("Post");
   const [publishAt, setPublishAt] = useState("");
   const [caption, setCaption] = useState("");
-  const [status, setStatus] = useState("draft");
+  const [status, setStatus] = useState<PostStatus>("draft");
   const [assigneeId, setAssigneeId] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState("");
@@ -343,8 +324,30 @@ function CreatePostForm({
     if (!publishAt) return;
     setLoading(true);
     let mediaUrl: string | null = null;
+    let uploadedPath: string | null = null;
 
     if (mediaFile) {
+      const allowedType = mediaFile.type.startsWith("image/") || mediaFile.type.startsWith("video/");
+      if (!allowedType) {
+        toast.error("Only image and video media are supported.");
+        setLoading(false);
+        return;
+      }
+      if (!mediaFile.size) {
+        toast.error("The selected media file is empty.");
+        setLoading(false);
+        return;
+      }
+      if (mediaFile.size > MAX_POST_MEDIA_SIZE) {
+        toast.error("The selected media file is too large.");
+        setLoading(false);
+        return;
+      }
+      if (mediaFile.name.length > MAX_POST_MEDIA_NAME_LENGTH) {
+        toast.error("The selected media file name is too long.");
+        setLoading(false);
+        return;
+      }
       const path = `posts/${clientId}/${Date.now()}_${mediaFile.name}`;
       const { data: upload, error: uploadError } = await supabase.storage
         .from("brand-assets")
@@ -353,45 +356,37 @@ function CreatePostForm({
           contentType: mediaFile.type || undefined,
         });
       if (uploadError) {
+        toast.error(uploadError.message);
         setLoading(false);
         return;
       }
+      uploadedPath = upload.path;
       const { data: publicUrlData } = supabase.storage.from("brand-assets").getPublicUrl(upload.path);
       mediaUrl = publicUrlData.publicUrl;
     }
 
-    const { data, error } = await supabase
-      .from("posts")
-      .insert({
-        client_id: clientId,
-        platform,
-        type,
-        publish_at: new Date(publishAt).toISOString(),
-        caption: caption || null,
-        status,
-        media_url: mediaUrl,
-      })
-      .select()
-      .single();
-    if (!error && data) {
-      const post = data as PostRow;
-      const publishAt = new Date(post.publish_at);
-      const { data: templates } = await supabase.from("task_templates").select("post_type, rules_json");
-      const template = (templates ?? []).find((t) => t.post_type === post.type) ?? (templates ?? [])[0];
-      const tasksConfig = (template?.rules_json as { tasks?: { type: string; role?: string; buffer_days_before?: number }[] })?.tasks ?? [];
-      for (const rule of tasksConfig) {
-        const due = new Date(publishAt);
-        due.setDate(due.getDate() - (rule.buffer_days_before ?? 0));
-        await supabase.from("tasks").insert({
-          client_id: post.client_id,
-          post_id: post.id,
-          type: rule.type,
-          due_at: due.toISOString(),
-          status: "todo",
-          assignee_id: assigneeId || null,
-        });
+    const publishDate = new Date(publishAt);
+    if (Number.isNaN(publishDate.getTime())) {
+      toast.error("Publish time is invalid.");
+      if (uploadedPath) {
+        await supabase.storage.from("brand-assets").remove([uploadedPath]);
       }
-      onCreated(post, assigneeId);
+      setLoading(false);
+      return;
+    }
+
+    const result = await createPostAction({
+      clientId,
+      platform,
+      type,
+      publishAt: publishDate.toISOString(),
+      caption,
+      status,
+      mediaUrl: mediaUrl || "",
+      assigneeId,
+    });
+    if (result.ok) {
+      onCreated(result.data as PostRow, assigneeId);
       setShow(false);
       setPlatform("Instagram");
       setType("Post");
@@ -400,6 +395,11 @@ function CreatePostForm({
       setAssigneeId("");
       setMediaFile(null);
       setMediaPreview("");
+    } else {
+      if (uploadedPath) {
+        await supabase.storage.from("brand-assets").remove([uploadedPath]);
+      }
+      toast.error(result.error);
     }
     setLoading(false);
   }
@@ -488,13 +488,14 @@ function CreatePostForm({
                   <label className="block text-sm text-slate-400 mb-1">Status</label>
                   <select
                     value={status}
-                    onChange={(e) => setStatus(e.target.value)}
+                    onChange={(e) => setStatus(e.target.value as PostStatus)}
                     className="w-full rounded bg-white/5 border border-white/10 px-3 py-2 text-white text-sm"
                   >
-                    <option value="draft">Draft</option>
-                    <option value="pending_approval">Pending approval</option>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="published">Published</option>
+                    {POST_STATUSES.map((postStatus) => (
+                      <option key={postStatus} value={postStatus}>
+                        {postStatus.replaceAll("_", " ")}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -551,7 +552,7 @@ function normalizePostStatus(status: string) {
   const value = status.toLowerCase();
   if (value === "scheduled") return "scheduled";
   if (value === "pending_approval" || value === "review") return "review";
-  if (value === "published" || value === "approved") return "published";
+  if (value === "published") return "published";
   return "draft";
 }
 

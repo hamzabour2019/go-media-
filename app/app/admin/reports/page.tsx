@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/session";
 
 const ReportsClient = dynamic(
   () => import("./reports-client").then((m) => ({ default: m.ReportsClient })),
@@ -7,6 +8,7 @@ const ReportsClient = dynamic(
 );
 
 export default async function AdminReportsPage() {
+  await requireRole(["ADMIN"]);
   const supabase = await createClient();
   const [
     { data: tasks },

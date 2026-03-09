@@ -2,6 +2,18 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 export type Role = "ADMIN" | "SUPERVISOR" | "SMM" | "DESIGNER" | "EDITOR";
+export type AppProfile = {
+  id: string;
+  name: string;
+  role: Role;
+  email?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+  notes?: string | null;
+  is_active?: boolean | null;
+  created_at: string;
+};
 
 export const DASHBOARD_BY_ROLE: Record<Role, string> = {
   ADMIN: "/app/admin",
@@ -30,18 +42,34 @@ export async function getProfile() {
     .select("*")
     .eq("id", user.id)
     .single();
-  return profile as { id: string; name: string; role: Role; created_at: string } | null;
+  return profile as AppProfile | null;
 }
 
 export async function requireAuth() {
   const session = await getSession();
   if (!session) redirect("/login");
+  await requireProfile();
   return session;
 }
 
 export async function requireProfile() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  if (profile.is_active === false) redirect("/login?reason=inactive");
+  return profile;
+}
+
+export async function requireRole(allowedRoles: Role[]) {
+  const profile = await requireProfile();
+  if (!allowedRoles.includes(profile.role)) {
+    redirect(await getRedirectPath(profile.role));
+  }
+  return profile;
+}
+
+export async function getActionProfile() {
+  const profile = await getProfile();
+  if (!profile || profile.is_active === false) return null;
   return profile;
 }
 

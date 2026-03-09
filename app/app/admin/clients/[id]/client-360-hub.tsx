@@ -7,10 +7,15 @@ import { createPortal } from "react-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Building2, Calendar, Download, FileText, Filter, Plus, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Drawer } from "@/components/ui/drawer";
 import { BrandKitForm } from "./brand-kit-form";
+import { createPostAction } from "@/app/actions/posts";
+import { createTaskAction, reassignTaskAction, transitionTaskAction } from "@/app/actions/tasks";
+import { getAllowedTaskStatusChoices, POST_STATUSES, type PostStatus } from "@/lib/workflows";
+import type { Role } from "@/lib/auth/session";
 
 type ClientRow = {
   id: string;
@@ -88,6 +93,7 @@ interface Client360HubProps {
   approvals: ApprovalRow[];
   activities: ActivityRow[];
   profiles: { id: string; name: string; role?: string }[];
+  viewerRole: Role;
   canManageNotes: boolean;
 }
 
@@ -102,10 +108,12 @@ export function Client360Hub({
   approvals,
   activities,
   profiles,
+  viewerRole,
   canManageNotes,
 }: Client360HubProps) {
   const supabase = createClient();
   const router = useRouter();
+  const isManager = viewerRole === "ADMIN" || viewerRole === "SUPERVISOR";
   const [tab, setTab] = useState<TabKey>("overview");
   const [globalSearch, setGlobalSearch] = useState("");
   const [tasks, setTasks] = useState(initialTasks);
@@ -137,7 +145,7 @@ export function Client360Hub({
   const [newPostType, setNewPostType] = useState("post");
   const [newPostPublishAt, setNewPostPublishAt] = useState("");
   const [newPostCaption, setNewPostCaption] = useState("");
-  const [newPostStatus, setNewPostStatus] = useState("scheduled");
+  const [newPostStatus, setNewPostStatus] = useState<PostStatus>("scheduled");
 
   const [newNoteBody, setNewNoteBody] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -285,54 +293,48 @@ export function Client360Hub({
 
   async function createPost() {
     if (!newPostPublishAt) return;
-    const publishAt = new Date(newPostPublishAt).toISOString();
-    const { data, error } = await supabase
-      .from("posts")
-      .insert({
-        client_id: client.id,
-        platform: newPostPlatform,
-        type: newPostType,
-        publish_at: publishAt,
-        caption: newPostCaption || null,
-        status: newPostStatus,
-      })
-      .select("id, platform, type, publish_at, status, caption, hashtags, media_url, created_at")
-      .single();
-    if (!error && data) {
-      setPosts((prev) => [data as PostRow, ...prev]);
-      setShowCreatePost(false);
-      setNewPostCaption("");
-      setNewPostPublishAt("");
-      router.refresh();
+    const result = await createPostAction({
+      clientId: client.id,
+      platform: newPostPlatform,
+      type: newPostType,
+      publishAt: new Date(newPostPublishAt).toISOString(),
+      caption: newPostCaption,
+      status: newPostStatus,
+      mediaUrl: "",
+      assigneeId: "",
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    setPosts((prev) => [result.data as PostRow, ...prev]);
+    setShowCreatePost(false);
+    setNewPostCaption("");
+    setNewPostPublishAt("");
+    setNewPostStatus("scheduled");
+    router.refresh();
   }
 
   async function createTask() {
     if (!newTaskType || !newTaskDueAt) return;
-    const { data: authData } = await supabase.auth.getUser();
-    const dueAtIso = new Date(newTaskDueAt).toISOString();
-    const { data, error } = await supabase
-      .from("tasks")
-      .insert({
-        client_id: client.id,
-        type: newTaskType,
-        title: newTaskType,
-        assignee_id: newTaskAssigneeId || null,
-        due_at: dueAtIso,
-        priority: newTaskPriority,
-        assigned_by: authData.user?.id ?? null,
-      })
-      .select("id, type, title, description, status, assignee_id, assigned_by, due_at, priority, created_at, start_at, post_id")
-      .single();
-    if (!error && data) {
-      setTasks((prev) => [data as TaskRow, ...prev]);
-      setShowCreateTask(false);
-      setNewTaskType("");
-      setNewTaskDueAt("");
-      setNewTaskAssigneeId("");
-      setNewTaskPriority(1);
-      router.refresh();
+    const result = await createTaskAction({
+      clientId: client.id,
+      type: newTaskType,
+      assigneeId: newTaskAssigneeId,
+      dueAt: new Date(newTaskDueAt).toISOString(),
+      priority: newTaskPriority,
+      postId: "",
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    setShowCreateTask(false);
+    setNewTaskType("");
+    setNewTaskDueAt("");
+    setNewTaskAssigneeId("");
+    setNewTaskPriority(1);
+    router.refresh();
   }
 
   async function addNote() {
@@ -390,41 +392,48 @@ export function Client360Hub({
   }
 
   async function updateTaskStatus(taskId: string, status: string) {
-    const { error } = await supabase.from("tasks").update({ status }).eq("id", taskId);
-    if (!error) {
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
-      router.refresh();
+    const result = await transitionTaskAction({
+      taskId,
+      targetStatus: status as "todo" | "in_progress" | "review" | "approved" | "changes_requested",
+      note: "",
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: result.data.status } : t)));
+    router.refresh();
   }
 
   async function reassignTask(taskId: string, assigneeId: string) {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ assignee_id: assigneeId || null })
-      .eq("id", taskId);
-    if (!error) {
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, assignee_id: assigneeId || null } : t)));
-      router.refresh();
+    const result = await reassignTaskAction({ taskId, assigneeId });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, assignee_id: result.data.assignee_id } : t))
+    );
+    router.refresh();
   }
 
   async function duplicatePost(post: PostRow) {
-    const { data, error } = await supabase
-      .from("posts")
-      .insert({
-        client_id: client.id,
-        platform: post.platform,
-        type: post.type,
-        publish_at: new Date(post.publish_at).toISOString(),
-        caption: post.caption || null,
-        status: "draft",
-      })
-      .select("id, platform, type, publish_at, status, caption, hashtags, media_url, created_at")
-      .single();
-    if (!error && data) {
-      setPosts((prev) => [data as PostRow, ...prev]);
-      router.refresh();
+    const result = await createPostAction({
+      clientId: client.id,
+      platform: post.platform,
+      type: post.type,
+      publishAt: new Date(post.publish_at).toISOString(),
+      caption: post.caption || "",
+      status: "draft",
+      mediaUrl: post.media_url || "",
+      assigneeId: "",
+    });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    setPosts((prev) => [result.data as PostRow, ...prev]);
+    router.refresh();
   }
 
   function exportCsv(kind: "tasks" | "posts") {
@@ -607,7 +616,7 @@ export function Client360Hub({
             <Filter className="h-4 w-4 text-slate-400" />
             <select value={postStatusFilter} onChange={(e) => setPostStatusFilter(e.target.value)} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white">
               <option value="">All statuses</option>
-              {["draft", "scheduled", "published", "approved"].map((s) => <option key={s} value={s}>{s}</option>)}
+              {POST_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <select value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white">
               <option value="">All platforms</option>
@@ -695,8 +704,15 @@ export function Client360Hub({
                     <td className="px-3 py-2 text-white">{t.title || t.type}</td>
                     <td className="px-3 py-2 text-slate-500 text-sm">{t.assignee_id ? profileMap[t.assignee_id] ?? t.assignee_id : "Unassigned"}</td>
                     <td className="px-3 py-2">
-                      <select value={t.status} onChange={(e) => updateTaskStatus(t.id, e.target.value)} className="rounded bg-white/10 border border-white/10 px-2 py-1 text-sm text-white">
-                        {["todo", "in_progress", "review", "approved", "changes_requested"].map((s) => <option key={s} value={s}>{s}</option>)}
+                      <select
+                        value={t.status}
+                        onChange={(e) => updateTaskStatus(t.id, e.target.value)}
+                        className="rounded bg-white/10 border border-white/10 px-2 py-1 text-sm text-white"
+                      >
+                        {getAllowedTaskStatusChoices(t.status, {
+                          isAssignee: false,
+                          isManager,
+                        }).map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className="px-3 py-2 text-slate-500 text-sm">{t.due_at ? `${new Date(t.due_at).toLocaleString()} · ${humanRemaining(t.due_at, t.status)}` : "—"}</td>
@@ -799,29 +815,88 @@ export function Client360Hub({
           <input value={newPostType} onChange={(e) => setNewPostType(e.target.value)} placeholder="Type" className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
           <input type="datetime-local" value={newPostPublishAt} onChange={(e) => setNewPostPublishAt(e.target.value)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
           <textarea value={newPostCaption} onChange={(e) => setNewPostCaption(e.target.value)} placeholder="Caption" rows={3} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
-          <select value={newPostStatus} onChange={(e) => setNewPostStatus(e.target.value)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white">
-            {["draft", "scheduled", "published", "approved"].map((s) => <option key={s} value={s}>{s}</option>)}
+          <select value={newPostStatus} onChange={(e) => setNewPostStatus(e.target.value as PostStatus)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white">
+            {POST_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <button type="button" onClick={createPost} className="btn-primary w-full">Create Post</button>
         </div>
       </Drawer>
 
       <Drawer open={showCreateTask} onClose={() => setShowCreateTask(false)} title="New Task" width="md">
-        <div className="space-y-3">
-          <input value={newTaskType} onChange={(e) => setNewTaskType(e.target.value)} placeholder="Task title/type" className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
-          <select value={newTaskAssigneeId} onChange={(e) => setNewTaskAssigneeId(e.target.value)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white">
-            <option value="">Unassigned</option>
-            {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <input type="datetime-local" value={newTaskDueAt} onChange={(e) => setNewTaskDueAt(e.target.value)} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white" />
-          <select value={newTaskPriority} onChange={(e) => setNewTaskPriority(Number(e.target.value))} className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white">
-            {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={createTask} className="btn-primary w-full">Create Task</button>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Create a production task and assign it directly to a teammate.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Task title / type</label>
+            <input
+              value={newTaskType}
+              onChange={(e) => setNewTaskType(e.target.value)}
+              placeholder="e.g. Reel edit, Story design"
+              className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Assignee</label>
+            <select
+              value={newTaskAssigneeId}
+              onChange={(e) => setNewTaskAssigneeId(e.target.value)}
+              className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white"
+            >
+              <option value="">Unassigned</option>
+              {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Deadline</label>
+              <input
+                type="datetime-local"
+                value={newTaskDueAt}
+                onChange={(e) => setNewTaskDueAt(e.target.value)}
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Priority (1-10)</label>
+              <select
+                value={newTaskPriority}
+                onChange={(e) => setNewTaskPriority(Number(e.target.value))}
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-white"
+              >
+                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+            <p className="text-xs text-slate-400">Priority guide: 1 = low, 10 = urgent.</p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={createTask}
+              disabled={!newTaskType.trim() || !newTaskDueAt}
+              className="btn-primary flex-1 disabled:opacity-50"
+            >
+              Create Task
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateTask(false)}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/15 transition duration-200"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </Drawer>
 

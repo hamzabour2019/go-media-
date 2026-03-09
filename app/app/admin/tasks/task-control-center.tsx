@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createTaskAction } from "@/app/actions/tasks";
 
 interface Client { id: string; name: string }
 interface Profile { id: string; name: string; role: string }
@@ -22,45 +22,26 @@ export function TaskControlCenter({
   const [priority, setPriority] = useState(1);
   const [created, setCreated] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
   const router = useRouter();
 
   async function handleCreate() {
     if (!clientId || !type || !dueAt) return;
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    // datetime-local has no timezone. Convert to ISO to preserve user's intended local time.
-    const dueAtIso = new Date(dueAt).toISOString();
-    const { data: task, error } = await supabase
-      .from("tasks")
-      .insert({
-        client_id: clientId,
-        post_id: null,
-        type,
-        title: type,
-        assignee_id: assigneeId || null,
-        due_at: dueAtIso,
-        priority,
-        assigned_by: user?.id ?? null,
-      })
-      .select("id")
-      .single();
+    const result = await createTaskAction({
+      clientId,
+      type,
+      assigneeId,
+      dueAt: new Date(dueAt).toISOString(),
+      priority,
+      postId: "",
+    });
     setLoading(false);
-    if (error) {
-      console.error(error);
+    if (!result.ok) {
+      console.error(result.error);
       return;
     }
-    if (task) {
-      await supabase.from("activity_logs").insert({
-        entity_type: "task",
-        entity_id: task.id,
-        action: "created",
-        actor_id: user?.id ?? null,
-        meta_json: { type, client_id: clientId },
-      });
-      setCreated(task.id);
-      router.refresh();
-    }
+    setCreated(result.data.id);
+    router.refresh();
   }
 
   return (

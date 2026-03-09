@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/session";
 import { UsersTable } from "./users-table";
 
 export default async function AdminUsersPage() {
+  await requireRole(["ADMIN"]);
   const supabase = await createClient();
   const { data: profiles } = await supabase
     .from("profiles")

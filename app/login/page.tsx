@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { getProfile, getRedirectPath } from "@/lib/auth/session";
 import { LoginForm } from "./login-form";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ reason?: string }>;
+}) {
+  const params = await searchParams;
   const profile = await getProfile();
   if (profile) {
     const path = await getRedirectPath(profile.role);
@@ -20,6 +25,11 @@ export default async function LoginPage() {
             </div>
             <h1 className="text-xl font-bold text-white">GO Media Agency</h1>
           </div>
+          {params?.reason === "inactive" && (
+            <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              This account is inactive. Contact an administrator if you believe this is a mistake.
+            </div>
+          )}
           <LoginForm />
         </div>
       </div>

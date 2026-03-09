@@ -67,7 +67,8 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
       approvals={approvals ?? []}
       activities={activities}
       profiles={profiles ?? []}
-      canManageNotes={me.role === "ADMIN" || me.role === "SUPERVISOR" || me.role === "SMM"}
+      viewerRole={me.role}
+      canManageNotes={me.role === "ADMIN" || me.role === "SUPERVISOR"}
     />
   );
 }

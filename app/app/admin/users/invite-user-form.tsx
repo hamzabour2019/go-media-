@@ -13,6 +13,14 @@ const schema = z.object({
   role: z.enum(["ADMIN", "SUPERVISOR", "SMM", "DESIGNER", "EDITOR"]),
   usePassword: z.boolean().optional(),
   password: z.string().min(6).optional(),
+}).superRefine((data, ctx) => {
+  if (data.usePassword && !data.password) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["password"],
+      message: "Temporary password is required",
+    });
+  }
 });
 type FormData = z.infer<typeof schema>;
 
@@ -28,8 +36,8 @@ export function InviteUserForm({ onSuccess }: { onSuccess: () => void }) {
 
   async function onSubmit(data: FormData) {
     setLoading(true);
-    const result = data.usePassword && data.password
-      ? await createUserWithPassword(data.email, data.password, data.role)
+    const result = data.usePassword
+      ? await createUserWithPassword(data.email, data.password ?? "", data.role)
       : await inviteUserByEmail(data.email, data.role);
     setLoading(false);
     if (result.ok) {

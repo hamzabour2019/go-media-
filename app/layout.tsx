@@ -19,9 +19,14 @@ export const metadata: Metadata = {
   title: "GO Media Agency",
   description: "Agency task manager with role-based dashboards",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: "/icon.png",
+    apple: "/apple-icon.png",
   },
 };
 

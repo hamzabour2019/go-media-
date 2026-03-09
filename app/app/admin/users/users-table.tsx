@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types/database";
 import type { Role } from "@/lib/auth/session";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -10,6 +9,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { InviteUserForm } from "./invite-user-form";
 import { Users } from "lucide-react";
 import { toast } from "sonner";
+import { setUserActiveState, updateUserRole } from "@/app/actions/invite-user";
 
 const ROLES: Role[] = ["ADMIN", "SUPERVISOR", "SMM", "DESIGNER", "EDITOR"];
 
@@ -20,7 +20,6 @@ export function UsersTable({ initialProfiles }: { initialProfiles: Profile[] }) 
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const supabase = createClient();
 
   const filtered = useMemo(() => {
     return profiles.filter((p) => {
@@ -34,19 +33,20 @@ export function UsersTable({ initialProfiles }: { initialProfiles: Profile[] }) 
 
   async function updateRole(id: string, role: Role) {
     setUpdating(id);
-    const { error } = await supabase.from("profiles").update({ role }).eq("id", id);
-    if (error) toast.error(error.message);
+    const result = await updateUserRole(id, role);
+    if (!result.ok) toast.error(result.error);
     else setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, role } : p)));
     setUpdating(null);
   }
 
   async function toggleActive(id: string, current: boolean) {
     setUpdating(id);
-    const { error } = await supabase.from("profiles").update({ is_active: !current }).eq("id", id);
-    if (error) toast.error(error.message);
+    const nextActive = !current;
+    const result = await setUserActiveState(id, nextActive);
+    if (!result.ok) toast.error(result.error);
     else {
-      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, is_active: !current } : p)));
-      toast.success(current ? "User deactivated" : "User activated");
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, is_active: nextActive } : p)));
+      toast.success(result.message);
     }
     setUpdating(null);
   }
